@@ -19,3 +19,9 @@ Steps:
 
 3) get esp with ble to control 
 tbd
+
+
+# Thanks to
+https://www.wireshark.org/
+https://github.com/hbldh/bleak
+https://github.com/gbevin/SendMIDI
