@@ -1,0 +1,49 @@
+20apr2024 wireshark log
+
+connect
+
+system memory connect mode
+1-b
++ (2b)
+- (1b)
+1-c
++ (2c)
+- (1c)
+
+librarian user mem
+1-a
+1-b
+1-c
+2-a
+2-b
+2-c
+1-a
+1-b
+1-c
+2-a
+2-b
+2-c
+1-a
+1-b
+1-c
+2-a
+2-b
+2-c
+3-a
+3-b
+3-c
+
+editor
+volume > 100
+volume > 0
+volume > 38
+gain 100
+gain 0
+gain 70
+amptype clean
+amptype crunch
+amptype lead
+amptype brown
+amptype accoustic
+variation off
+variation on

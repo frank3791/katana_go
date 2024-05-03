@@ -7,17 +7,31 @@ from bleak import BleakScanner, BleakError, BleakClient
 
 import ble_midi_timestamp
 
+class HexFmt:
+    def __init__(self, hex_string:str):
+        hex_string = str(hex_string.strip())
+        hex_string = hex_string.replace("'","").replace(":","").replace("\\r","").replace("\\n","")
+        hex_string = hex_string.strip()
+        self.hex_string = hex_string
+        self.hex_bytes = ':'.join('{:02x}'.format(byte) for byte in bytes.fromhex(self.hex_string))
+        self.hex_bytes_spaced = ' '.join('{:02x}'.format(byte) for byte in bytes.fromhex(self.hex_string))
+        self.byte_array = bytearray.fromhex(hex_string)
+
+    def __str__(self):
+        # for easy printing
+        return str(self.hex_bytes)
+
 class KatanaGo:
     # description of BLE timestamps:
     # https://hangar42.nl/wp-content/uploads/2017/10/BLE-MIDI-spec.pdf
     # BLE_MIDI_HEADER
-    # BLE_MIDI_TIMESTAMP TimeStampLow
+    # BLE_MIDI_TS TimeStampLow
 
     def __init__(self):
         self.dev_name = "KATANA:GO"
         # self.dev_name = "KTN-GO"
         self.BLE_MIDI_HEADER = "94"
-        self.BLE_MIDI_TIMESTAMP = "F4"
+        self.BLE_MIDI_TS = "F4"
         self.STX = "F0"
         self.ROLAND = "41"
         self.DEV_ID = "10"
@@ -68,9 +82,6 @@ class KatanaGo:
         self.ble_start_list.append('96:fa:f0:41:10:01:05:0d:11:7f:01:00:04:00:00:00:01:7b:fa:f7')
         self.ble_start_list.append('89:b1:f0:41:10:01:05:0d:12:7f:01:00:04:00:7c:b1:f7')
         self.ble_start_list.append('97:d2:f0:41:10:01:05:0d:11:7f:00:00:03:00:00:00:01:7d:d2:f7')
- #       self.ble_start_list.append('8a:81:f0:41:10:01:05:0d:12:7f:00:00:03:00:7e:81:f7')
- #       self.ble_start_list.append('98:9a:fa')
- #       self.ble_start_list.append('98:a4:fc')
 
         # load default class container values
         self.compose_sys_ex_msg()
@@ -92,14 +103,6 @@ class KatanaGo:
         self.CHECKSUM = format(cksum, '02X')
         return self.CHECKSUM
 
-    def sendmidi_str(self, original_string = "68656c6c6f"):
-        """
-        In this code snippet, the original string "68656c6c6f" is split into pairs of characters using list comprehension, with each pair separated by a space. The resulting spaced_string will have a space after every two characters in the original string.
-        """
-        original_string = original_string.lower()
-        spaced_string = ' '.join([original_string[i:i+2] for i in range(0, len(original_string), 2)])
-        return spaced_string
-
     def compose_sys_ex_msg(self, DATA = "7f0001000000"):
         '''
         compose midi and ble_midi sys_ex messages
@@ -112,24 +115,22 @@ class KatanaGo:
         self.DATA = DATA.lower()
         self.cksum(self.DATA)
         # single packet / line sys_ex command for ble_midi
-        self.msg_ble_midi_sys_ex = f"{self.BLE_MIDI_HEADER}{self.BLE_MIDI_TIMESTAMP}"
+        self.msg_ble_midi_sys_ex = f"{self.BLE_MIDI_HEADER}{self.BLE_MIDI_TS}"
         self.msg_ble_midi_sys_ex += f"{self.STX}{self.ROLAND}{self.DEV_ID}{self.MODEL_ID}{self.DT1}"
-        self.msg_ble_midi_sys_ex += f"{self.DATA}{self.CHECKSUM}{self.BLE_MIDI_TIMESTAMP}{self.EOX}"
+        self.msg_ble_midi_sys_ex += f"{self.DATA}{self.CHECKSUM}{self.BLE_MIDI_TS}{self.EOX}"
+        self.msg_ble_midi_sys_ex = HexFmt(self.msg_ble_midi_sys_ex)
+
         # single line sys_ex command for wired midi
         self.msg_midi_sys_ex = f"{self.STX}{self.ROLAND}{self.DEV_ID}{self.MODEL_ID}{self.DT1}"
         self.msg_midi_sys_ex += f"{self.DATA}{self.CHECKSUM}{self.EOX}"
-        return self.msg_midi_sys_ex
+        self.msg_midi_sys_ex = HexFmt(self.msg_midi_sys_ex)
+        return 
     
-    def btle_midi_2_midi(self, msg_ble_midi_sys_ex):
-        len1= len(f"{self.BLE_MIDI_HEADER}{self.BLE_MIDI_TIMESTAMP}")
-        self.msg_midi_sys_ex = msg_ble_midi_sys_ex[len1:]
-        return self.msg_midi_sys_ex
-
     def midi_dbg(self):
-        # from apk midi_dbg.js
+        # from katana go playstoor app apk midi_dbg.js
         head = f"{self.STX}{self.ROLAND}{self.DEV_ID}{self.MODEL_ID}"
         headLen = len(head)
-        msg = self.msg_midi_sys_ex.upper()
+        msg = self.msg_midi_sys_ex.hex_string.upper()
         result = ""
         msg_filt = msg[(headLen + 0):(headLen + 2)]
         if msg_filt == '12':
@@ -197,7 +198,7 @@ class KatanaGo:
         currently this does not work
         '''
         if data == '':
-            send_string = self.sendmidi_str(self.msg_midi_sys_ex)
+            send_string = HexFmt(self.msg_midi_sys_ex.hex_string).hex_bytes_spaced
         else:
             send_string = data
         cmd = f'sendmidi dev {self.dev_name} raw hex {send_string}'
@@ -207,46 +208,72 @@ class KatanaGo:
 
     def sys_ex_ble_midi_data(self, data):
         # process input
-        data_tmp = str(data.strip()).lower()
-        data_tmp = data_tmp.replace("'","").replace(":","").replace("\\r","").replace("\\n","")
-        data_tmp = data_tmp.replace('b','')
+        data_in = HexFmt(data)
 
         # generate timestamp for ble_midi, store into class container
         ts = ble_midi_timestamp.ble_midi_timestamp()
         self.BLE_MIDI_HEADER = ts['BLE_MIDI_HEADER']
-        self.BLE_MIDI_TIMESTAMP = ts['BLE_MIDI_TIMESTAMP']
+        self.BLE_MIDI_TS = ts['BLE_MIDI_TS']
 
-        self.compose_sys_ex_msg(data_tmp)
-
-        data_bytearray = bytearray.fromhex(str(self.msg_ble_midi_sys_ex.strip()).replace("'","").replace(":",""))
+        self.compose_sys_ex_msg(data_in.hex_string)
 
         result = {}
-        result['data_in']= ":".join([data_tmp[i:i+2] for i in range(0, len(data_tmp), 2)])
-        formatted_hex_string = ":".join([self.msg_ble_midi_sys_ex[i:i+2] for i in range(0, len(self.msg_ble_midi_sys_ex), 2)])
-        result['data_hex']= formatted_hex_string
-        result['data_bytearray']= data_bytearray
-        ic(k)
+        result['data_in']= data_in.hex_bytes
+        result['data_hex']= self.msg_ble_midi_sys_ex.hex_bytes
+        result['data_bytearray']= self.msg_ble_midi_sys_ex.byte_array
         return result
     
     def program_change(self, pc=0, cmd='7f:00:01:00:00:xx'):
         '''
         patch select by number just as a normal midi "pc 0" command
         '''
+        if int(pc) > 34:
+            print('max pc value: 34')
         pc = format(int(pc), '02X')
         ic(pc)
         cmd = cmd.replace('xx',pc)
         ic(cmd)
         return cmd
 
-def handle_rx(_: int, data: bytearray):
+    def amp_volume(self, pos=0, cmd='20:00:20:01:msb:lsb'):
+        '''
+        amp volume control
+        under construction
+        '''
+        lsb = 0
+        msb = int(pos)
+        if int(pc) > 34:
+            print('max  value: ?')
+        lsb = format(int(lsb), '02X')
+        msb = format(int(msb), '02X')
+        ic(msb, lsb)
+        cmd = cmd.replace('msb',msb).replace('lsb',lsb)
+        ic(cmd)
+        return cmd
 
+    def wah_position(self, vol=0, cmd='20:02:50:01:msb:lsb'):
+        '''
+        amp volume control
+        under construction
+        '''
+        lsb = 0
+        msb = int(pos)
+        if int(pos) > 34:
+            print('max  value: ?')
+        lsb = format(int(lsb), '02X')
+        msb = format(int(msb), '02X')
+        ic(msb, lsb)
+        cmd = cmd.replace('msb',msb).replace('lsb',lsb)
+        ic(cmd)
+        return cmd
+
+def handle_rx(_: int, data: bytearray):
     if data != None:
-        receive_hex = binascii.hexlify(data).decode()
-        formatted_hex_string = ":".join([receive_hex[i:i+2] for i in range(0, len(receive_hex), 2)])
+        data_in = binascii.hexlify(data).decode()
+        formatted_hex_string = HexFmt(data_in)
     else:
         formatted_hex_string = ''
-
-    print("received:", data, formatted_hex_string)
+    print("received:", formatted_hex_string)
 
 async def main(k: KatanaGo):
     # from stackoverflow
@@ -263,24 +290,21 @@ async def main(k: KatanaGo):
         # startup, repeat logged stuff, maybe not required ...
         for i in k.ble_start_list:
             # input validation
-            data_tmp = str(i.strip())
-            data_tmp = data_tmp.replace("'","").replace(":","").replace("\\r","").replace("\\n","")
-            data_bytearray_hex_str_old= str(data_tmp.strip()).replace("'","").replace(":","")
+            ble_midi_hex_str = HexFmt(i)
 
             # get actual timestamp
             ts = ble_midi_timestamp.ble_midi_timestamp()
             BLE_MIDI_HEADER = ts['BLE_MIDI_HEADER']
-            BLE_MIDI_TIMESTAMP = ts['BLE_MIDI_TIMESTAMP']
+            BLE_MIDI_TS = ts['BLE_MIDI_TS']
 
             # replace logged timestamps with actual
-            data_bytearray_hex_str_new = BLE_MIDI_HEADER+BLE_MIDI_TIMESTAMP+data_bytearray_hex_str_old[4:-4]+BLE_MIDI_TIMESTAMP+data_bytearray_hex_str_old[-2:]
-            data_bytearray = bytearray.fromhex(data_bytearray_hex_str_new)
+            ble_midi_hex_str = HexFmt(BLE_MIDI_HEADER + BLE_MIDI_TS + ble_midi_hex_str.hex_string[4:-4] + BLE_MIDI_TS + ble_midi_hex_str.hex_string[-2:])
 
             # write to device
-            await client.write_gatt_char(k.UUID, data_bytearray)
+            await client.write_gatt_char(k.UUID, ble_midi_hex_str.byte_array)
 
             # show debug info
-            ic(i, data_bytearray)
+            ic('write: ', ble_midi_hex_str.hex_bytes)
 
             # show katana apk debug stuff
             k.midi_dbg()
@@ -288,7 +312,7 @@ async def main(k: KatanaGo):
             # wait for the device to catch up
             await asyncio.sleep(.1)
         
-        print("Enter program change number, or only  <ENTER> to exit.")
+        print("Enter decimal program change number , or only  <ENTER> to exit.")
         while True:
 
             # start input prompt
@@ -296,20 +320,21 @@ async def main(k: KatanaGo):
             if data == b'\r\n':
                 break
 
-            data_tmp = str(data.strip()).lower()
+            # input validation
+            data_tmp = str(data.strip().decode('utf-8')).lower()
             data_tmp = data_tmp.replace("'","").replace(":","").replace("\\r","").replace("\\n","")
-            data_tmp = data_tmp.replace('b','')
 
             cmd = k.program_change(data_tmp)
 
             # process user input
-            sys_ex_ble_midi_data = k.sys_ex_ble_midi_data(cmd)
+            #sys_ex_ble_midi_data = k.sys_ex_ble_midi_data(cmd)
+            k.sys_ex_ble_midi_data(cmd)
 
             # write ble_midi data
-            await client.write_gatt_char(k.UUID, sys_ex_ble_midi_data['data_bytearray'], response=False)
+            await client.write_gatt_char(k.UUID, k.msg_ble_midi_sys_ex.byte_array, response=False)
 
             # show debug info
-            ic(sys_ex_ble_midi_data)
+            ic('write: ', k.msg_ble_midi_sys_ex.hex_bytes)
 
             # show katana apk debug stuff
             k.midi_dbg()
@@ -322,5 +347,6 @@ if __name__ == "__main__":
     k = KatanaGo()
     asyncio.run(main(k))
 
-    
     #k.send_midi_wired()
+
+    print('end')

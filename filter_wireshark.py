@@ -5,6 +5,7 @@ import json
 # Open the JSON file
 file_info = '20apr2024.json'
 file_info = 'scan_mightypro_27apr2024.txt.pcapng.json'
+file_info = '20240503_katana_amp_vol_and_next_wah.json'
 
 with open(file_info) as file:
     data = json.load(file)

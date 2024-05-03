@@ -25,7 +25,7 @@ def ble_midi_timestamp():
     result['lsb_hex'] = hex(int(lsb_binary, 2))
     result['msb_hex'] = hex(int(msb_binary, 2))
     result['BLE_MIDI_HEADER'] = result['msb_hex'][2:]
-    result['BLE_MIDI_TIMESTAMP'] = result['lsb_hex'][2:]
+    result['BLE_MIDI_TS'] = result['lsb_hex'][2:]
     result['binary_timer'] = binary_timer
     
     return result
